@@ -1,3 +1,3 @@
 @echo off
-python NLP.py
+python Run.py
 pause

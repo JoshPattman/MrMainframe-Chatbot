@@ -52,13 +52,15 @@ WRB	wh-abverb	where, when'''
 
 class nlpTranslator:
     def __init__(self):
-        self.quitWords = ["quit", "goodbye", "bye", "exit", "terminate", "cya", "see ya"]
+        self.continualSubject = ""
+        self.quitWords = ["quit", "goodbye", "bye", "exit", "terminate", "cya", "see ya", "close"]
         self.stripPunc = str.maketrans('','','!\"\\£$%^&*()_+=-[]}{\'@~#:;.,<>?/')
         self.verbTypes = ["VB", "VBG", "VBD", "VBN", "VBP", "VBZ"]
         self.nounTypes = ["NN", "NNS", "NNP", "NNPS", "RP"]
         self.questionWords = ["WDT", "WP", "WP$", "WRB"]
         self.pronounTypes = ["PRP","PRP$"]
         self.overridePronouns = ["i", "myself", "me", "you", "he", "she", "it", "they", "we"]
+        self.overrideVerbs = ["born", "die", "eat", "run", "walk"]
         self.adverbTypes = ["RB", "RBR", "RBS"]
         self.adjectiveTypes = ["JJ", "JJR", "JJS"]
         self.negatives = ["no", "not", "*nt"]
@@ -100,7 +102,11 @@ class nlpTranslator:
          "question$question verb$verb adjective$adjective noun$subject",
          "verb$question noun$subject verb$verb noun$object",
          "modal$modal noun$subject verb$verb noun$object",
-         "question$question"
+         "question$question",
+         "question$question verb$modal noun$subject verb$verb",
+         "question$question verb$modal adverb$subject verb$verb",
+         "question$question verb$modal adjective$subject verb$verb",
+         "question$question noun$subject noun$object"
          ]
 
     def normalizeVerb(self, verb):
@@ -117,6 +123,43 @@ class nlpTranslator:
                 newSent.append(sentence[i])
         return newSent
 
+    def mergeNouns(self, sentence, simpleTypes):
+        nsent = []
+        nsimp = []
+        offset = 0
+        for i in range(len(sentence)):
+            i = i + offset
+            if (i < len(sentence) - 1):
+                if (simpleTypes[i] == "noun") and (simpleTypes[i+1] == "noun"):
+                    nsent.append((sentence[i][0] + " " +sentence[i+1][0], sentence[i][1]))
+                    nsimp.append(simpleTypes[i])
+                    offset = offset + 1
+                else:
+                    nsent.append(sentence[i])
+                    nsimp.append(simpleTypes[i])
+            elif (i < len(sentence)):
+                nsent.append(sentence[i])
+                nsimp.append(simpleTypes[i])
+        return (nsent, nsimp)
+
+    def mergeHowMany(self, sentence, simpleTypes):
+        nsent = []
+        nsimp = []
+        offset = 0
+        for i in range(len(sentence)):
+            i = i + offset
+            if (i < len(sentence) - 1):
+                if (sentence[i][0] == "how") and (sentence[i+1][0] == "many"):
+                    nsent.append((sentence[i][0] + " " +sentence[i+1][0], sentence[i][1]))
+                    nsimp.append(simpleTypes[i])
+                    offset = offset + 1
+                else:
+                    nsent.append(sentence[i])
+                    nsimp.append(simpleTypes[i])
+            elif (i < len(sentence)):
+                nsent.append(sentence[i])
+                nsimp.append(simpleTypes[i])
+        return (nsent, nsimp)
 
     def formatSentence(self, sentence, simpleTypes, sentenceStructs):
         for struct in sentenceStructs:
@@ -153,7 +196,7 @@ class nlpTranslator:
             return "yesno"
         if wordTuple[0] in self.greetings:
             return "greeting"
-        if wordTuple[1] in self.verbTypes:
+        if wordTuple[1] in self.verbTypes or wordTuple[0] in self.overrideVerbs:
             return "verb"
         if wordTuple[1] in self.nounTypes:
             return "noun"
@@ -222,7 +265,11 @@ class nlpTranslator:
         except:
             sp = s
         print("COM>> %s"%sp)
-        self.speak.Speak(sp.replace(".", ", "))
+        try:
+            sp = sp.replace(".", ", ")
+        except:
+            pass
+        self.speak.Speak(sp)
 
     def testStucture(self, sent, struc):
         try:
@@ -247,7 +294,11 @@ class nlpTranslator:
         return True
 
     def removeBrackets(self, s):
-        rex = re.sub(r" ?\([^)]+\)", "", s.decode('utf-8'))
+        try:
+            s = s.encode("ascii", errors="ignore").decode("utf-8")
+        except:
+            s.decode("utf-8")
+        rex = re.sub(r" ?\([^)]+\)", "", s)
         rex = re.sub(r"\[[^]]+\]", "", rex)
         rex = rex.replace(")", "").replace("(", "")
         return rex
@@ -258,7 +309,16 @@ class nlpTranslator:
         except:
             return s
 
+    def question(self, ques):
+        self.say(ques)
+        ans = input("YOU>> ")
+        if ans in ["yes", "ye", "yeah", "sure", "why not", "ok", "y"]:
+            return True
+        else:
+            return False
+
     def proscessCommand(self, s):
+        rawInputCache = s
         s = s.translate(self.stripPunc).lower()
         if s in self.quitWords:
             self.say("I don't want to close")
@@ -275,14 +335,25 @@ class nlpTranslator:
                     tokens.insert(i, "i")
             tagged = tag(tokens)
             taggedTypes = self.makeTypes(tagged)
+
+            #self.say(tagged)
+            tagged = self.normalizeAllVerbs(tagged, taggedTypes)
+            merged = self.mergeNouns(tagged, taggedTypes)
+            tagged = merged[0]
+            taggedTypes = merged[1]
             tup = self.removeIrrelevant(tagged, taggedTypes)
             tagged = tup[0]
             taggedTypes = tup[1]
-            #self.say(tagged)
-            tagged = self.normalizeAllVerbs(tagged, taggedTypes)
+            merged = self.mergeHowMany(tagged, taggedTypes)
+            tagged = merged[0]
+            taggedTypes = merged[1]
             stat = self.formatSentence(tagged, taggedTypes, self.statements)
             ques = self.formatSentence(tagged, taggedTypes, self.questions)
-            if not stat == None:
+            if len(tagged) == 0:
+                self.say("you didn't write anything")
+            elif tagged[0][0] == "say":
+                self.say(rawInputCache.replace("say ","",1))
+            elif not stat == None:
                 #self.say(stat)
                 ##Special commmands
                 if self.testStucture(stat, "verb:be,subject:i,adjective:hungry"):
@@ -306,15 +377,61 @@ class nlpTranslator:
                 obj = ques['object']+" " if 'object' in ques.keys() else ""
                 vrb = ques["verb"] if 'verb' in ques.keys() else ""
                 vrb = "" if vrb == "be" else vrb
-                if ques["question"] == "what" or ques["question"] == "who":
-                    self.wikiFactoriser.loadPage(adj+pro+sub+obj+ vrb)
+                if ques["question"] in ["what","who", "how", "when", "where", "how many"]:
+                    search = adj+pro+sub+obj+ vrb
+                    self.wikiFactoriser.loadPage(search)
                     exists = self.wikiFactoriser.checkExists()
                     if not exists:
-                        self.say("I don't know anything about "+adj+pro+sub+obj+ vrb)
+                        search2 = sub
+                        self.wikiFactoriser.loadPage(search2)
+                        exists = self.wikiFactoriser.checkExists()
+                    if (not exists) or (self.wikiFactoriser.getSummary().replace(" ", "").replace("\n", "") == ""):
+                        self.say("I don't know anything about "+search +" or "+search2)
                     else:
-                        #self.say("I have found a page titled "+str(self.wikiFactoriser.getTitle()))
-                        self.say(self.numSentences(self.removeBrackets(self.wikiFactoriser.getSummary().encode("utf-8")), 2))
-                        #webbrowser.open(self.wikiFactoriser.fullURL)
+                        if ques['question'] in ["what", "who"]:
+                            self.say(self.numSentences(self.removeBrackets(self.wikiFactoriser.getSummary()), 2))
+                        elif ques["question"] == "when":
+                            sents = self.removeBrackets(self.wikiFactoriser.getSummary()).split(".")
+                            #print(sents)
+                            useful = ""
+                            for s in sents:
+                                #check for number
+                                if any(char.isdigit() for char in s):
+                                    useful = useful+s+"."
+                                break
+                            if useful == "":
+                                self.say("I am not sure about the date, but i have found an article")
+                                #self.say(tagged)
+                            else:
+                                self.say(useful)
+                        elif ques["question"] == "how many":
+                            sents = self.removeBrackets(self.wikiFactoriser.getSummary()).split(".")
+                            #print(sents)
+                            useful = ""
+                            for s in sents:
+                                #check for number
+                                if any(char.isdigit() for char in s):
+                                    useful = useful+s+"."
+                                break
+                            if useful == "":
+                                self.say("I am not sure about any numbers, but i have found an article")
+                                #self.say(tagged)
+                            else:
+                                self.say(useful)
+                        else:
+                            sents = self.removeBrackets(self.wikiFactoriser.getSummary()).split(".")
+                            #print(sents)
+                            useful = ""
+                            for s in sents:
+                                if ques["question"] in s:
+                                    useful = useful+"."+s
+                            self.say(useful)
+                        learnMore = self.question("Do you want to learn more?")
+                        if learnMore:
+                            webbrowser.open(self.wikiFactoriser.fullURL)
+                            self.say("Opening "+str(self.wikiFactoriser.getTitle()))
+                else:
+                    self.say("I'm not sure how to answer that")
             else:
                 self.say("Im not sure what that meant")
                 self.say(tagged)
@@ -343,16 +460,23 @@ class wikiFacts:
         return self.page.find("title").getText()
     def getSummary(self):
         styleCorrect = self.page.find_all("p")
-        p = (styleCorrect[1]).getText()
-        if p.count(".") < 2:
-            p = (styleCorrect[2]).getText()
-        if p.count(".") < 2:
-            p = (styleCorrect[3]).getText()
-        if p.count(".") < 2:
-            p = (styleCorrect[4]).getText()
+        try:
+            p = (styleCorrect[1]).getText()
+            if p.count(".") < 2 and len(styleCorrect) >= 3:
+                p = (styleCorrect[2]).getText()
+            if p.count(".") < 2 and len(styleCorrect) >= 4:
+                p = (styleCorrect[3]).getText()
+            if p.count(".") < 2 and len(styleCorrect) >= 5:
+                p = (styleCorrect[4]).getText()
+        except:
+            try:
+                p = (styleCorrect[0]).getText()
+            except:
+                p = ""
         return p
 
 class googleFacts:
+    #Experimental and not fully working
     def __init__(self):
         self.baseURL = """https://www.google.co.uk/search?q="""
         self.spaceReplace = "+"
@@ -365,34 +489,19 @@ class googleFacts:
         pageRaw = requests.get(url)
         self.page = bs4.BeautifulSoup(pageRaw.text, 'lxml')
     def checkExists(self):
-        styleCorrect = self.page.find_all("span", {"class":"st"})
-        for x in styleCorrect:
-            print(x)
+        styleCorrect = self.page.find_all("span", {"class":"ILfuVd yZ8quc"})
+        #for x in styleCorrect:
+            #print(x)
         if styleCorrect[1].getText() == "":
             return True
         else:
             return False
     def getTitle(self):
         return self.page.find("title").getText()
-    def getSummary(self):
-        styleCorrect = self.page.find_all("span", {"class":"st"})
-        p = (styleCorrect[1]).getText()
-        return p
-    def getSuperSummary(self):
-        styleCorrect = self.page.find_all("span", {"class":"st"})
-        firstBold = styleCorrect[1].find("b")
-        p = firstBold.getText()
-        return p
+    def getFact(keywords):
+        pass
+
 if __name__=='__main__':
-    gfs = googleFacts()
-    #gfs.loadPage("when was the berlin wall built")
-    gfs.loadPage("josh pattman")
-    print(gfs.checkExists())
-    try:
-        sp = gfs.getSuperSummary().encode("ascii", errors="ignore").decode()
-    except:
-        sp = gfs.getSuperSummary()
-    print(sp)
     n = nlpTranslator()
     #n.say("Initialising...")
     while True:
