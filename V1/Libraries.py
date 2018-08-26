@@ -106,7 +106,7 @@ class nlpTranslator:
          "question$question verb$modal noun$subject verb$verb",
          "question$question verb$modal adverb$subject verb$verb",
          "question$question verb$modal adjective$subject verb$verb",
-         "question$question noun$subject noun$object"
+         "question$question noun$object noun$subject"
          ]
 
     def normalizeVerb(self, verb):
