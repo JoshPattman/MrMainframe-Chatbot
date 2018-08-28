@@ -323,6 +323,13 @@ class nlpTranslator:
                 sent = sent + " "
             sent = sent + w.getFull()
         return sent
+    def wordsToTypeString(self, words):
+        sent = ""
+        for w in words:
+            if not sent == "":
+                sent = sent + " "
+            sent = sent + w.type
+        return sent
 
     def makeWords(self, sent, sentTypes):
         newSent = []
@@ -345,8 +352,9 @@ class nlpTranslator:
                 nextMain = -1
                 for i2 in range(i, len(sent)):
                     if not newSent[i2] == "":
-                        nextMain = i2
-                        break
+                        if ((newSent[i2] == "verb" and type == "adverb") or (newSent[i2] == "noun" and type in ["adjective", "pronoun"])):
+                            nextMain = i2
+                            break
                 if not nextMain == -1:
                     if type == "pronoun":
                         newSent[nextMain].pronoun = w
@@ -360,6 +368,7 @@ class nlpTranslator:
                     newSent[i] = word()
                     newSent[i].base = w
                     newSent[i].type = "noun"
+
         #now removal of ""
         newSent = [val for val in newSent if val != ""]
         return newSent
@@ -426,7 +435,7 @@ class nlpTranslator:
                     #print(d)
                     self.say(d)
                 else:
-                    s = ["Ok", "Great", "Cool"][random.randrange(0,3)]
+                    s = ["Ok", "Great", "Cool", "Statements are still a WIP, try asking a general question"][random.randrange(0,3)]
                     #print(s)
                     self.say(s)
             elif not ques == None:
@@ -436,8 +445,12 @@ class nlpTranslator:
                 obj = ques['object'].getFull() if 'object' in ques.keys() else ""
                 vrb = ques["verb"].getFull() if 'verb' in ques.keys() else ""
                 vrb = "" if ques["verb"].base == "be" else vrb
+                if not vrb == "":
+                    vrbStem = vrb[:len(vrb)-1] if vrb[len(vrb)-1] == 'd' else vrb
+                else:
+                    vrbStem = ""
                 if ques["question"].base in ["what","who", "how", "when", "where", "how many"]:
-                    search = sub+obj+vrb
+                    search = sub+" "+obj#+vrb
                     self.wikiFactoriser.loadPage(search)
                     exists = self.wikiFactoriser.checkExists()
                     if (not exists) or (self.wikiFactoriser.getSummary().replace(" ", "").replace("\n", "") == ""):
@@ -446,35 +459,45 @@ class nlpTranslator:
                         if ques['question'].base in ["what", "who"]:
                             self.say(self.numSentences(self.removeBrackets(self.wikiFactoriser.getSummary()), 2))
                         elif ques["question"].base == "when":
-                            sents = self.removeBrackets(self.wikiFactoriser.getSummary()).split(".")
+                            sents = self.removeBrackets(self.wikiFactoriser.getAll()).replace("\n", ".").split(".")
                             #print(sents)
                             useful = ""
+                            guess = ""
                             for s in sents:
                                 #check for number
-                                if any(char.isdigit() for char in s):
+                                if any(char.isdigit() for char in s) and vrbStem in s and len(useful) <= 300:
                                     useful = useful+s+"."
-                                break
-                            if useful == "":
+                                elif any(char.isdigit() for char in s) and guess == "":
+                                    guess = s
+
+                            if (useful == "") and (guess == ""):
                                 self.say("I am not sure about the date, but i have found an article")
+                            elif (useful == "") and (not guess == ""):
+                                self.say("If I had to guess, "+guess)
                                 #self.say(tagged)
                             else:
                                 self.say(useful)
                         elif ques["question"].base == "how many":
-                            sents = self.removeBrackets(self.wikiFactoriser.getSummary()).split(".")
+                            sents = self.removeBrackets(self.wikiFactoriser.getAll()).replace("\n", ".").split(".")
                             #print(sents)
                             useful = ""
+                            guess = ""
                             for s in sents:
                                 #check for number
-                                if any(char.isdigit() for char in s):
+                                if any(char.isdigit() for char in s) and vrbStem in s and len(useful) <= 300:
                                     useful = useful+s+"."
-                                break
-                            if useful == "":
+                                elif any(char.isdigit() for char in s) and guess == "":
+                                    guess = s
+
+                            if (useful == "") and (guess == ""):
                                 self.say("I am not sure about any numbers, but i have found an article")
+                            elif (useful == "") and (not guess == ""):
+                                self.say("If I had to guess, "+guess)
                                 #self.say(tagged)
                             else:
                                 self.say(useful)
                         else:
-                            sents = self.removeBrackets(self.wikiFactoriser.getSummary()).split(".")
+                            sents = self.removeBrackets(self.wikiFactoriser.getAll()).split(".")
                             #print(sents)
                             useful = ""
                             for s in sents:
@@ -483,6 +506,7 @@ class nlpTranslator:
                             self.say(useful)
                         learnMore = self.question("Do you want to learn more?")
                         if learnMore:
+                            #self.say(self.wikiFactoriser.getAll())
                             webbrowser.open(self.wikiFactoriser.fullURL)
                             self.say("Opening "+str(self.wikiFactoriser.getTitle()))
                 else:
@@ -490,7 +514,7 @@ class nlpTranslator:
                     #self.say(self.wordsToString(words))
             else:
                 self.say("Im not sure what that meant (%s)"%self.wordsToString(words))
-                #self.say(tagged)
+                self.say(self.wordsToTypeString(words))
 
             #self.say(taggedNegatives)
 
@@ -531,6 +555,14 @@ class wikiFacts:
             except:
                 p = ""
         return p
+    def getAll(self):
+        styleCorrect = self.page.find_all("p")
+        text = ""
+        for s in styleCorrect:
+            if not text == "":
+                text = text + "\n"
+            text = text + s.getText()
+        return text
 
 class googleFacts:
     #Experimental and not fully working
