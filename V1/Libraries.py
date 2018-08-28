@@ -87,26 +87,21 @@ class nlpTranslator:
         self.sentenceLengtheners = ["DT", "EX", "TO", "IN"]
         self.multipliers = ["CD"]
         self.speak = Dispatch("SAPI.SpVoice")
+        self.speak.Rate = 3
         self.lemmatizer = WordNetLemmatizer()
         self.wikiFactoriser = wikiFacts()
         self.googleFactoriser = googleFacts()
-        self.sentenceObjects = ["subject", "verb", "object", "greeting", "modal", "question", "answer"]
+        self.sentenceObjects = ["subject", "verb", "object", "greeting", "modal", "question", "answer", "irrelevant"]
         self.statements = [
-        "pronoun$user noun$subject verb$verb adjective$adjective",
-        "pronoun$user noun$subject verb$verb noun$object",
          "noun$subject verb$verb adjective$adjective",
          "noun$subject verb$verb noun$object",
-         "noun$subject verb$verb pronoun$user noun$object",
          "greeting$greeting",
          "noun$subject adverb$adverb verb$verb noun$object",
          "verb$verb noun$object",
          "noun$subject verb$verb",
          "noun$subject verb$verb noun$object",
-         "noun$subject verb$verb ponoun$user noun$object",
-         "verb$verb pronoun$subject noun$object",
          "yesno$answer",
          "noun$subject verb$irrelevant verb$verb noun$object",
-         "noun$subject verb$irrelevant verb$verb adjective$adjective",
          "noun$answer"
          ]
         self.questions = [
@@ -428,12 +423,12 @@ class nlpTranslator:
                 elif self.testStucture(stat, "answer"):self.say(["Ok", "Sure", "Right", "I understand"][random.randrange(0, 4)])
                 elif self.testStucture(stat, "subject"):
                     d=["Good for "+self.flip(stat['subject']), "OK", "Cool", "Great"][random.randrange(0, 4)]
-                    print(d)
+                    #print(d)
                     self.say(d)
                 else:
                     s = ["Ok", "Great", "Cool"][random.randrange(0,3)]
-                    print(s)
-                    self.speak(s)
+                    #print(s)
+                    self.say(s)
             elif not ques == None:
                 #self.say("Questions have not been fully implemented yet")
                 #self.say(ques)
