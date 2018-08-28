@@ -48,7 +48,25 @@ WP$	possessive wh-pronoun	whose
 WRB	wh-abverb	where, when'''
 
 
+class word:
+    def __init__(self):
+        self.base = ""
+        self.pronoun = ""
+        self.descriptions = []
+        self.type = ""
+    def getFull(self):
+        descriptionList = ""
+        for d in self.descriptions:
+            if not descriptionList == "":
+                descriptionList = descriptionList + " "
+            descriptionList = descriptionList + d
 
+        if not descriptionList == "":
+            descriptionList = descriptionList + " "
+        if not self.pronoun == "":
+            return self.pronoun + " " + descriptionList + self.base
+        else:
+            return descriptionList  + self.base
 
 class nlpTranslator:
     def __init__(self):
@@ -59,7 +77,7 @@ class nlpTranslator:
         self.nounTypes = ["NN", "NNS", "NNP", "NNPS", "RP"]
         self.questionWords = ["WDT", "WP", "WP$", "WRB"]
         self.pronounTypes = ["PRP","PRP$"]
-        self.overridePronouns = ["i", "myself", "me", "you", "he", "she", "it", "they", "we"]
+        self.overridePronouns = ["i", "myself", "me", "you", "he", "she", "it", "they", "we", "my", "ur", "your"]
         self.overrideVerbs = ["born", "die", "eat", "run", "walk"]
         self.adverbTypes = ["RB", "RBR", "RBS"]
         self.adjectiveTypes = ["JJ", "JJR", "JJS"]
@@ -72,7 +90,7 @@ class nlpTranslator:
         self.lemmatizer = WordNetLemmatizer()
         self.wikiFactoriser = wikiFacts()
         self.googleFactoriser = googleFacts()
-        self.sentenceObjects = ["subject", "verb", "object", "greeting", "adverb", "modal", "user", "question", "adjective", "answer"]
+        self.sentenceObjects = ["subject", "verb", "object", "greeting", "modal", "question", "answer"]
         self.statements = [
         "pronoun$user noun$subject verb$verb adjective$adjective",
         "pronoun$user noun$subject verb$verb noun$object",
@@ -92,20 +110,14 @@ class nlpTranslator:
          "noun$answer"
          ]
         self.questions = [
-         "modal$modal noun$subject verb$verb noun$user noun$object",
-         "verb$verb noun$subject noun$object",
+         "modal$modal noun$subject verb$verb noun$object",
          "question$question modal$modal noun$subject verb$verb noun$object",
          "question$question verb$verb noun$subject noun$object",
-         "question$question verb$verb pronoun$subject noun$object",
          "question$question verb$verb noun$subject",
-         "question$question verb$verb adjective$subject",
-         "question$question verb$verb adjective$adjective noun$subject",
          "verb$question noun$subject verb$verb noun$object",
          "modal$modal noun$subject verb$verb noun$object",
          "question$question",
          "question$question verb$modal noun$subject verb$verb",
-         "question$question verb$modal adverb$subject verb$verb",
-         "question$question verb$modal adjective$subject verb$verb",
          "question$question noun$object noun$subject"
          ]
 
@@ -161,18 +173,18 @@ class nlpTranslator:
                 nsimp.append(simpleTypes[i])
         return (nsent, nsimp)
 
-    def formatSentence(self, sentence, simpleTypes, sentenceStructs):
+    def formatSentence(self, words, sentenceStructs):
         for struct in sentenceStructs:
             split = struct.split(" ")
-            if len(split) == len(sentence):
+            if len(split) == len(words):
                 failed = False
                 out = {}
                 for (i, w) in enumerate(split):
                     halves = w.split("$")
                     varName = halves[1]
                     varType = halves[0]
-                    if varType == simpleTypes[i]:
-                        out[varName] = sentence[i][0]
+                    if varType == words[i].type:
+                        out[varName] = words[i]
                     else:
                         failed = True
                 if not failed:
@@ -191,7 +203,7 @@ class nlpTranslator:
 
     def getType(self, wordTuple):
         if wordTuple[0] in self.overridePronouns:
-            return "noun"
+            return "pronoun"
         if wordTuple[0] in self.yesnoWords:
             return "yesno"
         if wordTuple[0] in self.greetings:
@@ -309,6 +321,53 @@ class nlpTranslator:
         except:
             return s
 
+    def wordsToString(self, words):
+        sent = ""
+        for w in words:
+            if not sent == "":
+                sent = sent + " "
+            sent = sent + w.getFull()
+        return sent
+
+    def makeWords(self, sent, sentTypes):
+        newSent = []
+        #first run thru gets base words, second gets descriptors
+        for i in range(len(sent)):
+            type = sentTypes[i]
+            w = sent[i][0]
+            if type in ["yesno", "greeting", "question", "connector", "noun", "verb", "modal"]:
+                #self completed word (no descriptors)
+                newWord = word()
+                newWord.base = w
+                newWord.type = type
+                newSent.append(newWord)
+            else:
+                newSent.append("")
+        for i in range(len(sent)):
+            if newSent[i] == "":
+                type = sentTypes[i]
+                w = sent[i][0]
+                nextMain = -1
+                for i2 in range(i, len(sent)):
+                    if not newSent[i2] == "":
+                        nextMain = i2
+                        break
+                if not nextMain == -1:
+                    if type == "pronoun":
+                        newSent[nextMain].pronoun = w
+                    elif type == "adjective":
+                        newSent[nextMain].descriptions.append(w)
+                    elif type == "adverb":
+                        newSent[nextMain].descriptions.append(w)
+                    elif type == "multiplier":
+                        newSent[nextMain].descriptions.append(w)
+                else:
+                    newSent[i] = word()
+                    newSent[i].base = w
+                    newSent[i].type = "noun"
+        #now removal of ""
+        newSent = [val for val in newSent if val != ""]
+        return newSent
     def question(self, ques):
         self.say(ques)
         ans = input("YOU>> ")
@@ -318,6 +377,8 @@ class nlpTranslator:
             return False
 
     def proscessCommand(self, s):
+
+        #WordsOnly
         rawInputCache = s
         s = s.translate(self.stripPunc).lower()
         if s in self.quitWords:
@@ -333,10 +394,10 @@ class nlpTranslator:
                     tokens.remove(t)
                     tokens.insert(i, "am")
                     tokens.insert(i, "i")
+
+            #(Words, base types (NN, ect)) and Complex types (Noun, ect)
             tagged = tag(tokens)
             taggedTypes = self.makeTypes(tagged)
-
-            #self.say(tagged)
             tagged = self.normalizeAllVerbs(tagged, taggedTypes)
             merged = self.mergeNouns(tagged, taggedTypes)
             tagged = merged[0]
@@ -347,8 +408,13 @@ class nlpTranslator:
             merged = self.mergeHowMany(tagged, taggedTypes)
             tagged = merged[0]
             taggedTypes = merged[1]
-            stat = self.formatSentence(tagged, taggedTypes, self.statements)
-            ques = self.formatSentence(tagged, taggedTypes, self.questions)
+
+            #List of words
+            words = self.makeWords(tagged, taggedTypes)
+
+            #Sentence dictionary
+            stat = self.formatSentence(words, self.statements)
+            ques = self.formatSentence(words, self.questions)
             if len(tagged) == 0:
                 self.say("you didn't write anything")
             elif tagged[0][0] == "say":
@@ -371,26 +437,20 @@ class nlpTranslator:
             elif not ques == None:
                 #self.say("Questions have not been fully implemented yet")
                 #self.say(ques)
-                sub = ques['subject']+" " if 'subject' in ques.keys() else ""
-                adj = ques['adjective']+" " if 'adjective' in ques.keys() else ""
-                pro = ques['pronoun']+" " if 'pronoun' in ques.keys() else ""
-                obj = ques['object']+" " if 'object' in ques.keys() else ""
-                vrb = ques["verb"] if 'verb' in ques.keys() else ""
-                vrb = "" if vrb == "be" else vrb
-                if ques["question"] in ["what","who", "how", "when", "where", "how many"]:
-                    search = adj+pro+sub+obj+ vrb
+                sub = ques['subject'].getFull() if 'subject' in ques.keys() else ""
+                obj = ques['object'].getFull() if 'object' in ques.keys() else ""
+                vrb = ques["verb"].getFull() if 'verb' in ques.keys() else ""
+                vrb = "" if ques["verb"].base == "be" else vrb
+                if ques["question"].base in ["what","who", "how", "when", "where", "how many"]:
+                    search = sub+obj+vrb
                     self.wikiFactoriser.loadPage(search)
                     exists = self.wikiFactoriser.checkExists()
-                    if not exists:
-                        search2 = sub
-                        self.wikiFactoriser.loadPage(search2)
-                        exists = self.wikiFactoriser.checkExists()
                     if (not exists) or (self.wikiFactoriser.getSummary().replace(" ", "").replace("\n", "") == ""):
-                        self.say("I don't know anything about "+search +" or "+search2)
+                        self.say("I don't know anything about '"+search+"'")
                     else:
-                        if ques['question'] in ["what", "who"]:
+                        if ques['question'].base in ["what", "who"]:
                             self.say(self.numSentences(self.removeBrackets(self.wikiFactoriser.getSummary()), 2))
-                        elif ques["question"] == "when":
+                        elif ques["question"].base == "when":
                             sents = self.removeBrackets(self.wikiFactoriser.getSummary()).split(".")
                             #print(sents)
                             useful = ""
@@ -404,7 +464,7 @@ class nlpTranslator:
                                 #self.say(tagged)
                             else:
                                 self.say(useful)
-                        elif ques["question"] == "how many":
+                        elif ques["question"].base == "how many":
                             sents = self.removeBrackets(self.wikiFactoriser.getSummary()).split(".")
                             #print(sents)
                             useful = ""
@@ -423,7 +483,7 @@ class nlpTranslator:
                             #print(sents)
                             useful = ""
                             for s in sents:
-                                if ques["question"] in s:
+                                if ques["question"].base in s:
                                     useful = useful+"."+s
                             self.say(useful)
                         learnMore = self.question("Do you want to learn more?")
@@ -431,10 +491,12 @@ class nlpTranslator:
                             webbrowser.open(self.wikiFactoriser.fullURL)
                             self.say("Opening "+str(self.wikiFactoriser.getTitle()))
                 else:
-                    self.say("I'm not sure how to answer that")
+                    self.say("I'm not sure how to answer '%s' questions"%ques["question"].base)
+                    #self.say(self.wordsToString(words))
             else:
-                self.say("Im not sure what that meant")
-                self.say(tagged)
+                self.say("Im not sure what that meant (%s)"%self.wordsToString(words))
+                #self.say(tagged)
+
             #self.say(taggedNegatives)
 
 class wikiFacts:
